@@ -60,7 +60,7 @@ def set_sched():
     
     c = 0
     while True:
-        sched = input("\nPlease enter your " + "next " if c == 1 else "" + "schedule or type !q to finish your schedule:\n")
+        sched = input("\nPlease enter your " + ("next " if c == 1 else "") + "schedule or type !q to finish your schedule:\n")
         l = is_list(sched)
         if sched[:2].lower() == "!q":
             break
