@@ -20,12 +20,15 @@ def load(file):
 def is_list(d):
     return d.count(",") > 0
 
-def write_schedule(d, list=False):
-    f = open("schedule.sched")
-    if list:
+def write_schedule(d, lis=False):
+    if os.path.isfile("schedule.sched"):
+        f = open("schedule.sched", "w")
+        f.close()
+    f = open("schedule.sched", "a")
+    if lis:
         for i in d.split(","):
             ti = re.search(r"\d+:+\d+[AaPpMm]+", i)
-            cl = re.search(r"[a-zA-Z ]+\s(?!\n)", i)
+            cl = re.search(r"[a-zA-Z ]+\s(?=\d)(?!\n)", i)
             li = re.search(r"https*://.*/.*\w", i)
 
             tiw = i[ti.start():ti.end()].strip()
@@ -37,11 +40,46 @@ def write_schedule(d, list=False):
     f.close()
 
 def write_settings(args):
-    f = open("settings.txt")
-    f.write("user:{0},\n" % args.get("user"))
-    f.write("alternate:{0},\n" % args.get("alternate"))
+    f = open("settings.txt", "w")
+    f.write("user:%s,\n" % args.get("user"))
+    # f.write("user:%s,\n" % args.get("user"))
+    f.write("email:%s,\n" % args.get("email"))
+    f.write("password:%s,\n" % args.get("password"))
+    # f.write("alternate:{0},\n" % args.get("alternate"))
+
     f.close()
 
+def set_sched():
+    print("Let's get your schedule together.")
+    print("You can either enter your classes one-by-one, e.g.:")
+    print("    Study Hall\n    9:26AM\n    https://g.co/meet/your-link-here")
+    print("\nOr you can enter them all at once as a comma-separated list, e.g.:")
+    print("    Study Hall 9:26AM https://zoom.us/meeting/your-link-here, History 10:54 [link], Econ 1:07 [link], etc.")
+    print("\nWhen you want to quit, just type '!quit' or '!q'")
+    print("Don't worry about capitalization: I'll adjust it so everything will work smoothly for you! :)")
+    
+    c = 0
+    while True:
+        sched = input("\nPlease enter your " + "next " if c == 1 else "" + "schedule or type !q to finish your schedule:\n")
+        l = is_list(sched)
+        if sched[:2].lower() == "!q":
+            break
+
+        if not l:
+            cl = sched
+            ti = input("\nPlease give the time at which this class starts (e.g. 10:00AM):\n")
+            li = input("\nPlease give the link for the meeting of this class:\n")
+            sched = cl + ti + li
+
+        write_schedule(sched, l)
+        c = 1
+        if l:
+            break
+    
+    os.system("cls")
+    print("Thank you for setting up your user. You can now proceed with the program.")
+    input("\nPress Enter to continue...")
+    os.system("cls")
 
 def setup():
     settings = {}
@@ -50,38 +88,28 @@ def setup():
     print("\nPress enter to continue...")
     input()
 
+    os.system('cls')
+
     print("Let's introduce eachother. Hi, I'm SCHEDULY, the CMD line scheduler. And you are?")
     settings.update({"user":input("Enter your username:    ")})
-    print("Hi, {0}!" % settings.get("user"))
+    print("Hi, {0}!".format(settings.get("user")))
+    input("\nPress enter to continue...")
+    os.system("cls")
+
+    print("In order to properly sign in to your google meetings, you need to login to your school GMAIL account:")
     while True:
-        print("Do you go by an alternating schedule?")
-        alt = input("Yes/[No]:    ")
-        if alt[0].lower() == "y":
-            alt = True
-        else:
-            alt = False
-        print(("You have an alternating schedule." if alt else "You don't have an alternating schedule.") + " Is this correct?")
-        cont = input("Yes/[No]:    ")
-        if cont[0].lower() == "y":
+        em = input("\nPlease enter your email address:    ")
+        pa = input("Please enter your password:    ")
+        r = input(f"\nIs this correct?\nEmail:  {em}\nPassword:  {pa}\n\ny/N:    ")
+        if r[0].lower() == "y":
             break
-        print("Canceled the operation.")
-    settings.update({"alternate":str(alt)})
+        print("Operation canceled...")
+        time.sleep(0.5)
+
+    settings.update({"email":em, "password":pa})
     write_settings(settings)
 
-    print("Let's start by getting the schedule together.")
-    print("You can either enter your classes one-by-one, e.g.:")
-    print("    Study Hall 9:26: https://g.co/meet/your-link-here")
-    print("\nOr you can enter them all at once, e.g.:")
-    print("    Study Hall 9:26: https://zoom.us/meeting/your-link-here, History 10:54: [link], Econ 1:07: [link], etc.")
-    print("\nWhen you want to quit, just type 'quit' or 'q'")
-    
-    sched = input("\nPlease enter your schedule:\n")
-    l = is_list(sched)
-
-    write_schedule(sched, l)
-
-    print("Thank you for setting up your user. You can now proceed with the program.")
-    input("\nPress Enter to continue...")
+    set_sched()
 
 def run_setting():
     pass
@@ -199,7 +227,9 @@ def run():
         tim = s[len(s) - 1][1].lower()
         lh, lm = int(tim[:tim.rfind(":")]), int(tim[tim.rfind(":") + 1:tim.find("m") - 1])
         lam = tim[tim.rfind("m") - 1:]
-        if hours > lh and minutes > lm and am == lam:
+        lhours = int(time.strftime("%H"))
+
+        if lhours > lh and minutes > lm:
             break
             # pass
 
@@ -236,6 +266,8 @@ def main():
 
     if settings == {}:
         setup()
+    if not os.path.isfile("schedule.sched"):
+        set_sched()
         
     start()
 
