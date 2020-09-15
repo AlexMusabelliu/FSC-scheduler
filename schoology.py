@@ -112,7 +112,23 @@ def setup():
     set_sched()
 
 def run_setting():
-    pass
+    os.system("cls")
+    print("Settings\n1:Modify Settings\n2:Reset Settings\n3:Back")
+    c = input("Enter a number:    ")
+    if c == "1":
+        os.system("notepad \"schedule.sched\"")
+    elif c == "2":
+        open("schedule.sched", "w").close()
+        os.system("cls")
+        print("All cleared!")
+        time.sleep(0.5)
+    elif c == "3":
+        return
+    else:
+        print("Invalid input!")
+        time.sleep(0.5)
+
+    run_setting()
 
 def load_sched():
     os.chdir(os.path.abspath(os.path.dirname(__file__)))
@@ -239,7 +255,11 @@ def run():
 
 def start():
     # print('started')
+    
     while True:
+        os.system("cls")
+        print(f"Hello {user}!")
+        # print("Main Menu")
         menu = {1:"Run", 2:"Settings", 3:"Quit"}
         func = {1:run, 2:run_setting, 3:sys.exit}
 
@@ -247,26 +267,24 @@ def start():
         c = input("Enter a number:    ")
 
         func.get(int(c), (lambda: None))()
+
         # init_sel()
         # join_meet("https://g.co/meet/MyersAPecon1")
 
 def main():
-    global email, password
+    global email, password, user
     os.chdir(os.path.abspath(os.path.dirname(__file__)))
     os.system("cls")
     
     settings = load("settings.txt")
 
     # print(settings)
-
     user = settings.get("user", "user")
     email, password = settings.get("email"), settings.get("password")
 
-    print(f"Hello {user}!")
-
     if settings == {}:
         setup()
-    if not os.path.isfile("schedule.sched"):
+    if open("schedule.sched").read() == "":
         set_sched()
         
     start()
