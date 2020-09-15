@@ -41,11 +41,8 @@ def write_schedule(d, lis=False):
 
 def write_settings(args):
     f = open("settings.txt", "w")
-    f.write("user:%s,\n" % args.get("user"))
-    # f.write("user:%s,\n" % args.get("user"))
-    f.write("email:%s,\n" % args.get("email"))
-    f.write("password:%s,\n" % args.get("password"))
-    # f.write("alternate:{0},\n" % args.get("alternate"))
+    for k in args:
+        f.write("%s:%s,\n" % (str(k), args.get(k)))
 
     f.close()
 
@@ -108,21 +105,28 @@ def setup():
 
     settings.update({"email":em, "password":pa, "verbose":"False"})
     write_settings(settings)
-
+    os.system("cls")
     set_sched()
 
 def run_setting():
     os.system("cls")
-    print("Settings\n1:Modify Settings\n2:Reset Settings\n3:Back")
+    print("Settings\n1:Modify Settings\n2:Modify Schedule\n3:Reset Settings\n4:Reset Schedule\n5:Back")
     c = input("Enter a number:    ")
     if c == "1":
-        os.system("notepad \"schedule.sched\"")
+        os.system("notepad \"settings.txt\"")
     elif c == "2":
+        os.system("notepad \"schedule.sched\"")
+    elif c == "3":
+        open("settings.txt", "w").close()
+        os.system("cls")
+        print("All cleared!")
+        time.sleep(0.5)
+    elif c == "4":
         open("schedule.sched", "w").close()
         os.system("cls")
         print("All cleared!")
         time.sleep(0.5)
-    elif c == "3":
+    elif c == "5":
         return
     else:
         print("Invalid input!")
@@ -192,7 +196,20 @@ def join_meet(link):
 def run():
     init_sel()
     s = load_sched()
+    if s == {}:
+        os.system("cls")
+        print("Your schedule is blank!\n")
+        print("Press Enter to create a schedule...")
+        set_sched()
+
     sett = load("settings.txt")
+    
+    if sett.get("verbose") != "True":
+        os.system("cls")
+
+    if sett == {}:
+        print("WARNING: no settings have been created; they will be created on next startup.")
+
     day = int(time.strftime("%w"))
     if day == 1:
         print("Sorry, no synchronous classes today! Enjoy your Monday!")
@@ -284,7 +301,7 @@ def main():
 
     if settings == {}:
         setup()
-    if open("schedule.sched").read() == "":
+    elif open("schedule.sched").read() == "":
         set_sched()
         
     start()
