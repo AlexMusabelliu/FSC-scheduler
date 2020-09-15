@@ -106,7 +106,7 @@ def setup():
         print("Operation canceled...")
         time.sleep(0.5)
 
-    settings.update({"email":em, "password":pa})
+    settings.update({"email":em, "password":pa, "verbose":"False"})
     write_settings(settings)
 
     set_sched()
