@@ -18,4 +18,4 @@ Run whatever command you usually do to install selenium (e.g. `pip install selen
 You will need to manually run the python file (schoology.py) to utilize the program, as python is not set on your PATH variable.
 
 # Upcoming:
-- zoom compatibility
+- full zoom compatibility
