@@ -137,7 +137,7 @@ def run_setting():
 def load_sched():
     os.chdir(os.path.abspath(os.path.dirname(__file__)))
     f = open("schedule.sched")
-    t = f.read()
+    t = f.read().rstrip()
     b = t.split("\n\n")
     sched = {}
     for i in range(len(b)):
@@ -146,17 +146,21 @@ def load_sched():
         cl = re.search(r"[a-zA-Z ]+\s(?!\n)", d)
         li = re.search(r"https*://.*/.*\w", d)
 
-        tiw = d[ti.start():ti.end()].strip()
-        clw = d[cl.start():cl.end()].strip()
-        liw = d[li.start():li.end()].strip()
-
-        # f.write(f"{tiw}\n{clw}\n{liw}\n\n")
-        
-        sched.update({i:(clw, tiw, liw)})
+        try:
+            tiw = d[ti.start():ti.end()].strip()
+            clw = d[cl.start():cl.end()].strip()
+            liw = d[li.start():li.end()].strip()
+            
+            # f.write(f"{tiw}\n{clw}\n{liw}\n\n")
+            
+            sched.update({i:(clw, tiw, liw)})
+        except:
+            print("Failed to load schedule...")
+            return sched
 
     return sched
 
-def init_sel():
+def init_sel(verbose="False"):
     global driver
     def login(em, pas):
         for i in range(2):
@@ -177,6 +181,8 @@ def init_sel():
     chrome_options = Options()
     chrome_options.add_argument("--incognito")
     chrome_options.add_argument("use-fake-ui-for-media-stream")
+    if verbose == "False":
+        chrome_options.add_argument("--log-level=OFF")
     driver = webdriver.Chrome(chrome_options=chrome_options)
 
     driver.get("https://accounts.google.com/signin/v2/identifier?continue=https%3A%2F%2Fmail.google.com%2Fmail%2F&service=mail&sacu=1&rip=1&flowName=GlifWebSignIn&flowEntry=ServiceLogin")
@@ -194,14 +200,7 @@ def join_meet(link):
     join_button.click()
 
 def run():
-    init_sel()
-    s = load_sched()
-    if s == {}:
-        os.system("cls")
-        print("Your schedule is blank!\n")
-        print("Press Enter to create a schedule...")
-        set_sched()
-
+    os.system("cls")
     sett = load("settings.txt")
     
     if sett.get("verbose") != "True":
@@ -209,6 +208,15 @@ def run():
 
     if sett == {}:
         print("WARNING: no settings have been created; they will be created on next startup.")
+
+    init_sel(sett.get("verbose", "False"))
+
+    s = load_sched()
+    if s == {}:
+        os.system("cls")
+        print("Your schedule is blank!\n")
+        print("Press Enter to create a schedule...")
+        set_sched()
 
     day = int(time.strftime("%w"))
     if day == 1:
@@ -225,9 +233,10 @@ def run():
 
     debounce = True
     old_time = None
+    class_nums = list(chain(range(0, 1), range(1 + offset, min(offset + 5, len(s)))))
     if sett.get("verbose") == "True":
         print(s)
-        print([i for i in chain(range(0, 1), range(1 + offset, offset + 5))])
+        print([i for i in class_nums])
 
     while True:
         s = load_sched()
@@ -240,10 +249,10 @@ def run():
         am = time.strftime("%p").lower()
         # print(am)
 
-        if not debounce and minutes != old_time:
+        if not debounce and abs(minutes - old_time) > 3:
             debounce = True
 
-        for i in chain(range(0, 1), range(1 + offset, offset + 5)):
+        for i in class_nums:
             # print(i)
             tim = s[i][1].lower()
             # print(tim)
@@ -251,28 +260,35 @@ def run():
             m = int(tim[tim.rfind(":") + 1:tim.rfind("m") - 1])
             cm = tim[tim.rfind("m") - 1:]
 
-            if hours == h and minutes == m and am == cm and debounce:
+            if hours == h and abs(minutes - m) < 3 and am == cm and debounce:
                 print("joining")
-                join_meet(s[i][2])
+                for _ in range(10):
+                    try:
+                        join_meet(s[i][2])
+                        break
+                    except:
+                        print("Failed to join meet! Retrying..." + f" {i}" if i > 0 else "" + "\n")
                 debounce = False
-                old_time = m
+                old_time = minutes
+        
 
-        tim = s[len(s) - 1][1].lower()
+        tim = s[class_nums[len(class_nums) - 1]][1].lower()
         lh, lm = int(tim[:tim.rfind(":")]), int(tim[tim.rfind(":") + 1:tim.find("m") - 1])
-        lam = tim[tim.rfind("m") - 1:]
+        lam = tim[tim.rfind("m") - 1:].lower()
         lhours = int(time.strftime("%H"))
 
-        if lhours > lh and minutes > lm:
+        # print(lhours, lh, minutes, lm)
+
+        if lhours > lh + (12 if lam == "pm" and lh != 12 else 0) and minutes > lm:
             break
             # pass
 
             # print(h, m, hours, minutes)
         # break
     print("The day is over! Enjoy the rest of it!")
+    input("Press Enter to continue...")
 
 def start():
-    # print('started')
-    
     while True:
         os.system("cls")
         print(f"Hello {user}!")
