@@ -140,20 +140,23 @@ def load_sched():
     t = f.read().rstrip()
     b = t.split("\n\n")
     sched = {}
+    dy_dict = {"S":0, "M":1, "T":2, "W":3, "TH":4, "F":5, "SA":6}
     for i in range(len(b)):
         d = b[i]
         ti = re.search(r"\d+:+\d+[AaPpMm]+", d)
-        cl = re.search(r"[a-zA-Z ]+\s(?!\n)", d)
+        cl = re.search(r"[a-zA-Z ]+\s(?!\n)(?=\d)", d)
         li = re.search(r"https*://.*/.*\w", d)
-
+        dy = d.split("\n")[-1]
+        
         try:
             tiw = d[ti.start():ti.end()].strip()
             clw = d[cl.start():cl.end()].strip()
             liw = d[li.start():li.end()].strip()
-            
+            dys = [dy_dict.get(x, 2) for x in dy.strip().split(" ")]
+
             # f.write(f"{tiw}\n{clw}\n{liw}\n\n")
             
-            sched.update({i:(clw, tiw, liw)})
+            sched.update({i:(clw, tiw, liw, dys)})
         except:
             print("Failed to load schedule...")
             return sched
@@ -191,13 +194,20 @@ def init_sel(verbose="False"):
 def join_meet(link):
     # global driver
     # os.system(f"start chrome.exe {link} -incognito")
-    XPATH = "//span[contains(text(), 'Join now')]/parent::span/parent::div"
-    driver.get(link)
-    element = WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((By.XPATH, XPATH))
-            )
-    join_button = driver.find_element_by_xpath(XPATH)
-    join_button.click()
+    if "g.co" in link or "google" in link:
+        XPATH = "//span[contains(text(), 'Join now')]/parent::span/parent::div"
+        driver.get(link)
+        element = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.XPATH, XPATH))
+                )
+        join_button = driver.find_element_by_xpath(XPATH)
+        join_button.click()
+    else:
+        driver.get("https://zoom.us/join")
+        e = driver.find_element_by_id("join-confno")
+        e.send_keys(link)
+        e = driver.switchTo().activeElement();
+        e.send_keys(Keys.ENTER)
 
 def run():
     os.system("cls")
@@ -219,56 +229,49 @@ def run():
         set_sched()
 
     day = int(time.strftime("%w"))
-    if day == 1:
-        print("Sorry, no synchronous classes today! Enjoy your Monday!")
-        return
-    day = day > 1 and day < 4 
-
-    if day:
-        offset = 0
-    else:
-        offset = 4
 
     # offset = 4
 
     debounce = True
     old_time = None
-    class_nums = list(chain(range(0, 1), range(1 + offset, min(offset + 5, len(s)))))
+    # class_nums = list(chain(range(0, 1), range(1 + offset, min(offset + 5, len(s)))))
+    class_nums = range(len(s))
     if sett.get("verbose") == "True":
         print(s)
         print([i for i in class_nums])
 
+    s = load_sched()
     while True:
-        s = load_sched()
         t = time.time()
 
-        days = t // 86400
         hours = int(time.strftime("%I"))
         minutes = int(time.strftime("%M"))
         seconds = t % 60
         am = time.strftime("%p").lower()
         # print(am)
 
-        if not debounce and abs(minutes - old_time) > 3:
+        if not debounce and minutes - old_time > 5:
             debounce = True
 
         for i in class_nums:
             # print(i)
             tim = s[i][1].lower()
+            clss = s[i][0]
+            dys = s[i][3]
             # print(tim)
             h = int(tim[:tim.rfind(":")])
             m = int(tim[tim.rfind(":") + 1:tim.rfind("m") - 1])
             cm = tim[tim.rfind("m") - 1:]
 
-            if hours == h and abs(minutes - m) < 3 and am == cm and debounce:
-                print("joining")
-                for _ in range(10):
+            if debounce and day in dys and hours == h and minutes - m >= 0 and minutes - m <= 3 and am == cm:
+                print(f"joining {clss}")
+                for n in range(11):
                     try:
                         join_meet(s[i][2])
+                        debounce = False
                         break
                     except:
-                        print("Failed to join meet! Retrying..." + f" {i}" if i > 0 else "" + "\n")
-                debounce = False
+                        print(f"Failed to join {clss}! Retrying..." + (f" {n}" if n > 0 else "" + "\n"))
                 old_time = minutes
         
 
