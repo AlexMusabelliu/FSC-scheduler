@@ -1,11 +1,374 @@
-import os, json, re, sys, time
+import os, json, re, sys, time, threading, random
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.remote.command import Command
 from itertools import chain
+from PySide2.QtWidgets import *
+from PySide2.QtCore import *
+from PySide2.QtGui import *
+from io import StringIO
+
+class ClickLineEdit(QLineEdit):
+    def __init__(self, *args):
+        super(ClickLineEdit, self).__init__(*args)
+        self.default_text = self.text()
+    
+    def focusInEvent(self, event):
+        super(ClickLineEdit, self).focusInEvent(event)
+        if not self.isModified():
+            self.clear()
+    
+    def focusOutEvent(self, event):
+        super(ClickLineEdit, self).focusOutEvent(event)
+        if self.text() == "":
+            self.setText(self.default_text)
+
+
+class Form(QMainWindow):
+    def __init__(self, parent=None):
+        def send():
+            parent.add_sched([course_name.text(), course_time.text(), course_link.text(), list([1 if x.isChecked() else 0 for x in days])])
+            self.close()
+
+        super(Form, self).__init__(parent)
+        height, width = 720 // 3 , 1280 // 2
+
+        self.setMinimumHeight(height) 
+        self.setMaximumHeight(height)
+        self.setMinimumWidth(width) 
+        self.setMaximumWidth(width)
+
+        days = [QCheckBox(x, self) for x in ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]]
+        course_name = ClickLineEdit("Name of class")
+        course_time = ClickLineEdit("Time of class (HH:MM [AM/PM])")
+        course_link = ClickLineEdit("Link for class ([http/https]://www...)")
+        submit_button = QPushButton("Add to list")
+        submit_button.setStyleSheet('''background-color: #FFFFFF;
+                                        color: red;
+                                        font-size: 18px;
+                                        font-family: Tahoma, Verdana, Arial Black, Arial;
+                                        max-width:300px;
+                                        width:150px;
+                                        height:50px;
+                                        margin-left:490px;
+                                        margin-right:490px;
+                                        border:3px solid red;''')
+        submit_button.clicked.connect(send)
+
+        layout = QVBoxLayout()
+        layout1 = QHBoxLayout()
+        layout2 = QHBoxLayout()
+        layout2.addWidget(course_name)
+        layout2.addWidget(course_time)
+        layout2.addWidget(course_link)
+        for x in days:
+            layout1.addWidget(x)
+            x.setStyleSheet("color:white;")
+
+        layout.addLayout(layout2)
+        layout.addLayout(layout1)
+        layout.addWidget(submit_button)
+
+        self.wdg = QWidget(self)
+        self.wdg.setLayout(layout)
+        self.setCentralWidget(self.wdg)
+
+class Widget(QMainWindow):
+    def __init__(self, hellotext="Hello", parent=None):
+        super(Widget, self).__init__(parent)
+        olddir = os.getcwd()
+        os.chdir(os.path.abspath(os.path.dirname(__file__)))
+        print(os.getcwd())
+        os.chdir("..")
+
+        self.hellotext = hellotext
+        self.debug_output = ""
+        self.stopText = "Stop Running"
+        self.ran = False
+        self.form_active = False
+        self.new_data = []
+        self.seen_sched = False
+
+        height, width = 720, 1280
+
+        self.setMinimumHeight(height) 
+        self.setMaximumHeight(height)
+        self.setMinimumWidth(width) 
+        self.setMaximumWidth(width)
+
+        self.setWindowTitle("FSC Scheduler")
+
+        self.popUp = QMenu(self)
+        self.delete = QAction(QIcon("redx.png"), "Delete row")
+        self.popUp.addAction(self.delete)
+        
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.update)
+        self.timer.start(30)
+
+        os.chdir(olddir)
+
+        self.main_menu()
+
+    def main_menu(self):
+        self.main = QPushButton("Run")
+        self.opt = QPushButton("Options")
+        self.quit = QPushButton("Quit")
+        self.hello = QLabel(self.hellotext)
+        self.hello.setAlignment(Qt.AlignCenter)
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.hello)
+        layout.addWidget(self.main)
+        layout.addWidget(self.opt)
+        layout.addWidget(self.quit)
+
+        self.main.clicked.connect(_run)
+        self.opt.clicked.connect(run_setting)
+        self.quit.clicked.connect(lambda: sys.exit())
+
+        self.wdg = QWidget(self)
+        self.wdg.setLayout(layout)
+        self.setCentralWidget(self.wdg)
+
+    def run_OFF(self):
+        global cont_RUN, driver
+        def _quit():
+            while True:
+                try:
+                    driver.quit()
+                    break
+                except Exception as e:
+                    # print(e)
+                    if str(Exception) == "":
+                        break
+                
+        cont_RUN = False
+        self.stop.clicked.connect(lambda: None)
+        if self.stopText != "All done! Click here to return...":
+            self.stopText = "Quitting..."
+        else:
+            self.stopText = "Returning..."
+            
+        self.stop.setText(self.stopText)
+        threading.Thread(target=lambda: _quit(), daemon=True).start()
+        
+    def run_menu(self):
+        global read_IO
+        self.ran = True
+        self.stopText = "Stop Running"
+        sys.stdout = read_IO = StringIO()
+        self.debug = QLabel(self.debug_output)
+        self.debug.setWordWrap(True)
+        self.debug.setStyleSheet('''color:white;
+                                    height:300px;
+                                    max-height:300px;
+                                    margin-bottom:30px;
+                                    font-size:14px;
+                                    font-family: Trebuchet-MS, Comic Sans MS, Arial;''')
+        
+        self.stop = QPushButton(self.stopText)
+        # self.stop.setWordWrap(True)
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.debug)
+        layout.addWidget(self.stop)
+
+        self.stop.clicked.connect(self.run_OFF)
+
+        self.wdg = QWidget(self)
+        self.wdg.setLayout(layout)
+        self.setCentralWidget(self.wdg)
+
+    def update_run(self):
+        def isalive(driver):
+            try:
+                driver.execute(Command.STATUS)
+                return True
+            except:
+                return False
+
+        global driver, glob_text
+        try:
+            if self.ran:
+                alive = isalive(driver)
+                # print(alive, random.random())
+                if not alive:
+                    self.ran = False
+                    self.main_menu()
+        except:
+            # print(f"Glob_text: {glob_text}")
+            pass
+        
+        if glob_text == "Set your schedule":
+            self.stopText = "Set your schedule"
+            self.stop.clicked.connect(self.set_sched)
+
+        self.stop.setText(self.stopText)
+    
+    def update(self):
+        to_show = read_IO.getvalue()
+        self.debug_output = to_show
+        try:
+            self.update_run()
+        except Exception as e:
+            # print("couldn't run", e)
+            pass
+        try:
+            self.debug.setText(self.debug_output)
+        except Exception as e:
+            # sys.stdout = old_IO
+            # print(e)
+            # sys.stdout = read_IO
+            pass
+
+    def add_sched(self, data):
+        self.form_active = False
+        # fach, ti, li, dys = *data
+        new_row = self.cur_sched.rowCount() + 1
+        self.cur_sched.setRowCount(new_row)
+        dys = ["M", "T", "W", "TH", "F", "SA", "S"]
+        str_days = " ".join([dys[i] for i in range(len(data[3])) if data[3][i] != 0])
+        self.new_data.append(data[:-1] + [str_days])
+        print(str_days)
+        for i in range(4):
+            elem = QTableWidgetItem(data[i]) if i != 3 else QTableWidgetItem(str_days)
+            self.cur_sched.setItem(new_row - 1, i, elem)
+        self.cur_sched.setItem(new_row - 1 , 5, QTableWidgetItem("X"))
+        
+        # elem = QTableWidgetItem(str(new_row))
+        # elem = self.cur_sched
+        # self.cur_sched.setVerticalHeaderItem(new_row - 1, elem)
+        # elem.setContextMenuPolicy(Qt.CustomContextMenu)
+        # elem.customContextMenuRequested.connect(lambda x: self.right_click(x, elem))
+
+    def right_click(self, point):
+        obj = self.cur_sched.itemAt(point)
+        self.delete.triggered.connect(lambda: self.delete_row(obj))
+        # print(obj, type(obj))
+        if type(obj) == QTableWidgetItem:
+            self.popUp.exec_(self.cur_sched.mapToGlobal(point))
+
+    def delete_row(self, obj):
+        r = obj.row()
+        # for i in range(0, 4):
+        self.cur_sched.removeRow(r)
+
+    def show_form(self):
+        if self.form_active == False:
+            f = Form(self).show()
+            self.form_active = True
+
+    def set_sched(self):
+        if not self.seen_sched:
+            self.new_data = []
+            self.seen_sched = True
+            self.cur_sched = QTableWidget(self)
+            self.cur_sched.setColumnCount(4)
+            self.cur_sched.setHorizontalHeaderLabels(["Name", "Time", "Link", "Days"])
+            header = self.cur_sched.horizontalHeader()
+            header.setSectionResizeMode(QHeaderView.Stretch)
+            self.cur_sched.setContextMenuPolicy(Qt.CustomContextMenu)
+            self.cur_sched.customContextMenuRequested.connect(self.right_click)
+
+        intro = '''Let's get your schedule together.\nUse the button below to open a form to make your schedule.\nDon't worry about capitalization - it'll be adjusted for.\n\n''' \
+        '''Right-click to view additional actions.\nDouble-click to edit an entry.'''
+        cont = QPushButton("Continue")
+        cont.setStyleSheet("margin-right:0;color:red;border: 3px solid red;background-color: white;height:48px;width:120px;")
+        cont.clicked.connect(self.set_sched_2)
+
+        make_form = QPushButton("Add new item")
+        make_form.clicked.connect(self.show_form)
+        
+        info = QLabel(intro)
+        info.setAlignment(Qt.AlignCenter)
+        info.setStyleSheet('''color:white;
+                                height:300px;
+                                max-height:300px;
+                                margin-bottom:30px;
+                                font-size:18px;
+                                font-family: Bookman, Verdana, Comic Sans MS, Arial;''')
+
+        layout = QVBoxLayout()
+        layout.addWidget(info)
+        layout.addWidget(self.cur_sched)
+        layout.addWidget(make_form)
+        layout.addWidget(cont, alignment=Qt.AlignRight | Qt.AlignBottom)
+
+        self.wdg = QWidget(self)
+        self.wdg.setLayout(layout)
+        self.setCentralWidget(self.wdg)
+
+    def set_sched_2(self):
+        def final():
+            msg = '''Schedule has been updated. Returning to main menu.'''
+            info = QLabel(msg)
+            info.setAlignment(Qt.AlignCenter)
+            info.setStyleSheet('''color:white;
+                                    height:300px;
+                                    max-height:300px;
+                                    margin-bottom:30px;
+                                    font-size:18px;
+                                    font-family: Bookman, Verdana, Comic Sans MS, Arial;''')
+            
+            layout = QVBoxLayout()
+            layout.addWidget(info)
+
+            write_schedule(self.new_data)
+            
+            self.wdg = QWidget(self)
+            self.wdg.setLayout(layout)
+            self.setCentralWidget(self.wdg)
+
+            QTimer.singleShot(2500, self.main_menu)
+
+        msg = '''This is your schedule:'''
+        msg2 = '''Press confirm to update your schedule.'''
+
+        info = QLabel(msg)
+        info.setAlignment(Qt.AlignCenter)
+        info.setStyleSheet('''color:white;
+                                height:300px;
+                                max-height:300px;
+                                margin-bottom:30px;
+                                font-size:18px;
+                                font-family: Bookman, Verdana, Comic Sans MS, Arial;''')
+
+        info2 = QLabel(msg2)
+        info2.setAlignment(Qt.AlignCenter)
+        info2.setStyleSheet('''color:white;
+                                height:300px;
+                                max-height:300px;
+                                margin-bottom:30px;
+                                font-size:18px;
+                                font-family: Bookman, Verdana, Comic Sans MS, Arial;''')
+
+        back = QPushButton("Back")
+        back.setStyleSheet("margin-left:0;color:red;border: 3px solid red;background-color: white;height:48px;width:120px;")
+        back.clicked.connect(self.set_sched)
+
+        new_sched = self.cur_sched
+        new_sched.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        new_sched.setSelectionMode(QAbstractItemView.SingleSelection)
+        new_sched.setSelectionBehavior(QAbstractItemView.SelectRows)
+
+        confirm = QPushButton("Confirm")
+        confirm.clicked.connect(final)
+
+        layout = QVBoxLayout()
+        layout.addWidget(info)
+        layout.addWidget(new_sched)
+        layout.addWidget(info2)
+        layout.addWidget(confirm)
+        layout.addWidget(back, alignment=Qt.AlignLeft | Qt.AlignBottom)
+
+        self.wdg = QWidget(self)
+        self.wdg.setLayout(layout)
+        self.setCentralWidget(self.wdg)
 
 def load(file):
     r = {}
@@ -20,22 +383,17 @@ def load(file):
 def is_list(d):
     return d.count(",") > 0
 
-def write_schedule(d, lis=False):
-    if os.path.isfile("schedule.sched"):
-        f = open("schedule.sched", "w")
-        f.close()
-    f = open("schedule.sched", "a")
-    if lis:
-        for i in d.split(","):
-            ti = re.search(r"\d+:+\d+[AaPpMm]+", i)
-            cl = re.search(r"[a-zA-Z ]+\s(?=\d)(?!\n)", i)
-            li = re.search(r"https*://.*/.*\w", i)
+def write_schedule(d):
+    f = open("schedule.sched", "w")
+    for e in d:
+        cl, ti, li, dy = e
 
-            tiw = i[ti.start():ti.end()].strip()
-            clw = i[cl.start():cl.end()].strip()
-            liw = i[li.start():li.end()].strip()
+        tiw = ti.strip()
+        clw = cl.strip()
+        liw = li.strip()
+        dyw = dy.strip()
 
-            f.write(f"{tiw}\n{clw}\n{liw}\n\n")
+        f.write(f"{tiw}\n{clw}\n{liw}\n{dyw}\n\n")
 
     f.close()
 
@@ -136,7 +494,11 @@ def run_setting():
 
 def load_sched():
     os.chdir(os.path.abspath(os.path.dirname(__file__)))
-    f = open("schedule.sched")
+    try:
+        f = open("schedule.sched")
+    except Exception as e:
+        # print(f"Failed to load schedule! Error: {e}")
+        return {}
     t = f.read().rstrip()
     b = t.split("\n\n")
     sched = {}
@@ -158,7 +520,7 @@ def load_sched():
             
             sched.update({i:(clw, tiw, liw, dys)})
         except:
-            print("Failed to load schedule...")
+            # print("Failed to load schedule...")
             return sched
 
     return sched
@@ -209,24 +571,37 @@ def join_meet(link):
         e = driver.switchTo().activeElement();
         e.send_keys(Keys.ENTER)
 
+def _run():
+    global form
+    form.run_menu()
+    threading.Thread(target=run, daemon=True).start()
+    # print("Done")
+
 def run():
-    os.system("cls")
+    global read_IO, cont_RUN, old_IO, form, glob_text
+    sys.stdout = read_IO
     sett = load("settings.txt")
     
     if sett.get("verbose") != "True":
-        os.system("cls")
+        verb = False
+    else:
+        verb = True
 
     if sett == {}:
         print("WARNING: no settings have been created; they will be created on next startup.")
 
-    init_sel(sett.get("verbose", "False"))
-
     s = load_sched()
     if s == {}:
-        os.system("cls")
         print("Your schedule is blank!\n")
-        print("Press Enter to create a schedule...")
-        set_sched()
+        print("Click below to set your schedule....")
+    sys.stdout = old_IO
+
+    while s == {}:
+        glob_text = "Set your schedule"
+        s = load_sched()
+    sys.stdout = read_IO
+
+    init_sel(sett.get("verbose", "False"))
 
     day = int(time.strftime("%w"))
 
@@ -236,19 +611,20 @@ def run():
     old_time = None
     # class_nums = list(chain(range(0, 1), range(1 + offset, min(offset + 5, len(s)))))
     class_nums = range(len(s))
-    if sett.get("verbose") == "True":
+    if verb:
         print(s)
         print([i for i in class_nums])
 
-    s = load_sched()
-    while True:
+    dayst = time.daylight
+    cont_RUN = True
+    while cont_RUN:
         t = time.time()
 
         hours = int(time.strftime("%I"))
         minutes = int(time.strftime("%M"))
         seconds = t % 60
         am = time.strftime("%p").lower()
-        # print(am)
+        # print(hours, minutes)
 
         if not debounce and minutes - old_time > 5:
             debounce = True
@@ -274,8 +650,8 @@ def run():
                         print(f"Failed to join {clss}! Retrying..." + (f" {n}" if n > 0 else "" + "\n"))
                 old_time = minutes
         
-
-        tim = s[class_nums[len(class_nums) - 1]][1].lower()
+        last = max([x for x in class_nums if day in s[x][3]], key=lambda x: int(s[x][1][:s[x][1].find(":")]) + int(s[x][1][s[x][1].find(":") + 1:-2]) / 60 + (12 if s[x][1][-2:].lower() == "pm" and s[x][1][:s[x][1].find(":")] != "12" else 0))
+        tim = s[last][1].lower()
         lh, lm = int(tim[:tim.rfind(":")]), int(tim[tim.rfind(":") + 1:tim.find("m") - 1])
         lam = tim[tim.rfind("m") - 1:].lower()
         lhours = int(time.strftime("%H"))
@@ -288,27 +664,42 @@ def run():
 
             # print(h, m, hours, minutes)
         # break
-    print("The day is over! Enjoy the rest of it!")
-    input("Press Enter to continue...")
+    sys.stdout = old_IO
+    form.stopText = "All done! Click here to return..."
 
 def start():
-    while True:
-        os.system("cls")
-        print(f"Hello {user}!")
-        # print("Main Menu")
-        menu = {1:"Run", 2:"Settings", 3:"Quit"}
-        func = {1:run, 2:run_setting, 3:sys.exit}
+    global form
+    app = QApplication()
 
-        print("\n".join([str(i) + ":" + str(menu.get(i)) for i in menu]))
-        c = input("Enter a number:    ")
+    form = Widget(hellotext=f"Hello {user}!")
+    form.show()
 
-        func.get(int(c), (lambda: None))()
+    with open("design.qss", "r") as f:
+        app.setStyleSheet(f.read())
+
+    olddir = os.getcwd()
+    os.chdir(os.path.abspath(os.path.dirname(__file__)))
+    app.setWindowIcon(QIcon("logo.png"))
+    os.chdir(olddir)
+    
+    app.exec_()
+    # while True:
+    #     os.system("cls")
+    #     print(f"Hello {user}!")
+    #     # print("Main Menu")
+    #     menu = {1:"Run", 2:"Settings", 3:"Quit"}
+    #     func = {1:run, 2:run_setting, 3:sys.exit}
+
+    #     print("\n".join([str(i) + ":" + str(menu.get(i)) for i in menu]))
+    #     c = input("Enter a number:    ")
+
+    #     func.get(int(c), (lambda: None))()
 
         # init_sel()
         # join_meet("https://g.co/meet/MyersAPecon1")
 
 def main():
-    global email, password, user
+    global email, password, user, read_IO, old_IO, glob_text
     os.chdir(os.path.abspath(os.path.dirname(__file__)))
     os.system("cls")
     
@@ -317,11 +708,14 @@ def main():
     # print(settings)
     user = settings.get("user", "user")
     email, password = settings.get("email"), settings.get("password")
+    old_IO = sys.stdout
+    read_IO = StringIO()
+    glob_text = ""
 
     if settings == {}:
         setup()
-    elif open("schedule.sched").read() == "":
-        set_sched()
+    # elif open("schedule.sched").read() == "":
+    #     set_sched()
         
     start()
 
