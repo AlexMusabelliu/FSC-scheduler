@@ -78,21 +78,23 @@ class Form(QMainWindow):
         self.setCentralWidget(self.wdg)
 
 class Widget(QMainWindow):
-    def __init__(self, hellotext="Hello", parent=None):
+    def __init__(self, parent=None):
         super(Widget, self).__init__(parent)
         olddir = os.getcwd()
         os.chdir(os.path.abspath(os.path.dirname(__file__)))
-        print(os.getcwd())
+        # print(os.getcwd())
         os.chdir("..")
 
-        self.hellotext = hellotext
         self.debug_output = ""
         self.stopText = "Stop Running"
         self.ran = False
         self.form_active = False
         self.new_data = []
         self.seen_sched = False
-
+        self.name = ""
+        self.email = ""
+        self.password = ""
+        
         height, width = 720, 1280
 
         self.setMinimumHeight(height) 
@@ -112,13 +114,29 @@ class Widget(QMainWindow):
 
         os.chdir(olddir)
 
+        self.test()
+
+    def test(self):
+        settings = load("settings.txt")
+        if settings == {} or not settings.get("name") or not settings.get("email") or not settings.get("password"):
+            self.set_setting()
+        
+        sched = load_sched()
+        print(settings, sched)
+        if sched == {}:
+            self.set_sched()
+
         self.main_menu()
 
     def main_menu(self):
+        self.settings = load("settings.txt")
+        user = self.settings.get("name", "user")
+        hellotext = f"Hello {user}"
+
         self.main = QPushButton("Run")
         self.opt = QPushButton("Options")
         self.quit = QPushButton("Quit")
-        self.hello = QLabel(self.hellotext)
+        self.hello = QLabel(hellotext)
         self.hello.setAlignment(Qt.AlignCenter)
 
         layout = QVBoxLayout()
@@ -128,12 +146,10 @@ class Widget(QMainWindow):
         layout.addWidget(self.quit)
 
         self.main.clicked.connect(_run)
-        self.opt.clicked.connect(run_setting)
+        self.opt.clicked.connect(self.run_setting)
         self.quit.clicked.connect(lambda: sys.exit())
 
-        self.wdg = QWidget(self)
-        self.wdg.setLayout(layout)
-        self.setCentralWidget(self.wdg)
+        self.cmw(layout)
 
     def run_OFF(self):
         global cont_RUN, driver
@@ -156,6 +172,347 @@ class Widget(QMainWindow):
             
         self.stop.setText(self.stopText)
         threading.Thread(target=lambda: _quit(), daemon=True).start()
+
+    def clear_menu(self, is_sched):
+        os.chdir(os.path.abspath(os.path.dirname(__file__)))
+        if is_sched:
+            f = "schedule.sched"
+        else:
+            f = "settings.txt"
+
+        open(f, "w").close()
+
+    def cmw(self, layout):
+        self.wdg = QWidget(self)
+        self.wdg.setLayout(layout)
+        self.setCentralWidget(self.wdg)
+
+    def confirm_delete(self, layout, is_sched=0):
+        def finish(is_sched):
+            self.clear_menu(is_sched)
+
+            text = "Your " + ("schedule has" if is_sched else "settings have") + " been reset successfully."
+            info = QLabel(text)
+
+            layout = QHBoxLayout()
+            layout.addWidget(info, alignment=Qt.AlignCenter)
+
+            self.cmw(layout)
+
+            QTimer.singleShot(1900, self.run_setting)
+
+        if not is_sched:
+            menu = "settings"
+        else:
+            menu = "schedule"
+        text = f'''Are you sure you want to reset your {menu}?'''
+        yes, no = QPushButton("Yes"), QPushButton("No")
+        confirm = QLabel(text)
+        confirm.setStyleSheet('''color:white;
+                                height:300px;
+                                max-height:300px;
+                                width:600px;
+                                font-size:30px;
+                                font-family: Bookman, Verdana, Comic Sans MS, Arial;''')
+
+        yes.setStyleSheet('''background-color: #FFFFFF;
+                            color: red;
+                            font-size: 18px;
+                            font-family: Tahoma, Verdana, Arial Black, Arial;
+                            max-width:300px;
+                            width:120px;
+                            height:80px;
+                            min-width:120px;
+                            margin-left:0px;
+                            margin-right:0px;
+                            border:3px solid red;''')
+
+        no.setStyleSheet('''background-color: #FFFFFF;
+                            color: red;
+                            font-size: 18px;
+                            font-family: Tahoma, Verdana, Arial Black, Arial;
+                            max-width:300px;
+                            width:120px;
+                            height:80px;
+                            min-width:120px;
+                            margin-left:0px;
+                            margin-right:0px;
+                            border:3px solid red;''')
+
+
+        nulayout = QVBoxLayout()
+        nulayout.addWidget(confirm, alignment=Qt.AlignHCenter)
+        nunulayout = QHBoxLayout()
+        nunulayout.addWidget(no, alignment=Qt.AlignBottom | Qt.AlignLeft)
+        nunulayout.addWidget(yes, alignment=Qt.AlignRight | Qt.AlignBottom)
+        nulayout.addLayout(nunulayout)
+        
+
+        yes.clicked.connect(lambda: finish(is_sched))
+        no.clicked.connect(self.run_setting)
+
+        self.cmw(nulayout)
+
+    def write_settings(self, args):
+        f = open("settings.txt", "w")
+        for k in args:
+            f.write("%s:%s,\n" % (str(k), args.get(k)))
+
+        f.close()
+
+    def set_setting(self, is_again=0):
+        def update_settings(func, **kwargs):
+            if kwargs.get("name"):
+                self.name = kwargs.get("name")
+            if kwargs.get("email"):
+                self.email = kwargs.get("email")
+            if kwargs.get("password"):
+                self.password = kwargs.get("password")
+                
+            settings.update({k:kwargs.get(k) for k in kwargs if k != "arg"})
+            arg = kwargs.get("arg")
+            if arg:
+                func(arg)
+            else:
+                func()
+
+        def set_setting2():
+            name_text = "Enter your name here" if self.name == "" else self.name
+            # print("-" * 128, name_text)
+            name = ClickLineEdit(name_text)
+            name_label = QLabel("Name: ")
+
+            self.nex = QPushButton("Next")
+            self.nex.setStyleSheet('''background-color: #FFFFFF;
+                                color: red;
+                                font-size: 18px;
+                                font-family: Tahoma, Verdana, Arial Black, Arial;
+                                max-width:300px;
+                                width:120px;
+                                height:80px;
+                                min-width:120px;
+                                margin-left:0px;
+                                margin-right:0px;
+                                border:3px solid red;''')
+
+            self.back = QPushButton("Back")
+            self.back.setStyleSheet('''background-color: #FFFFFF;
+                                color: red;
+                                font-size: 18px;
+                                font-family: Tahoma, Verdana, Arial Black, Arial;
+                                max-width:300px;
+                                width:120px;
+                                height:80px;
+                                margin-left:0px;
+                                margin-right:490px;
+                                border:3px solid red;''')
+
+            nulayout = QHBoxLayout()
+            nulayout.addWidget(name_label)
+            nulayout.addWidget(name)
+
+            for_back = QHBoxLayout()
+            for_back.addWidget(self.back)
+            for_back.addWidget(self.nex)
+
+            layout = QVBoxLayout()
+            layout.addLayout(nulayout)
+            layout.addLayout(for_back)
+
+            self.back.clicked.connect(lambda: self.set_setting(is_again))
+            self.nex.clicked.connect(lambda: update_settings(set_setting3, name=name.text()))
+
+            self.cmw(layout)
+
+        def set_setting3():
+            def final(): 
+                self.write_settings(settings)
+                text = "Your settings have been updated."
+                info = QLabel(text)
+
+                layout = QHBoxLayout()
+                layout.addWidget(info, alignment=Qt.AlignCenter)
+
+                self.cmw(layout)
+            
+                QTimer.singleShot(1900, self.run_setting if is_again else self.set_sched)
+                    
+
+            text = '''In order to sign in to Google meetings, an email address and password are needed.\nThese are kept confidential on your system.'''
+            info = QLabel(text)
+
+            email_text = "someone@example.com" if self.email == "" else self.email
+            password_text = "Enter password" if self.password == "" else self.password
+            email = ClickLineEdit(email_text)
+            email_label = QLabel("Email: ")
+            password = ClickLineEdit(password_text)
+            password_label = QLabel("Password: ")
+
+            self.nex = QPushButton("Next")
+            self.nex.setStyleSheet('''background-color: #FFFFFF;
+                                color: red;
+                                font-size: 18px;
+                                font-family: Tahoma, Verdana, Arial Black, Arial;
+                                max-width:300px;
+                                width:120px;
+                                height:80px;
+                                min-width:120px;
+                                margin-left:0px;
+                                margin-right:0px;
+                                border:3px solid red;''')
+
+            self.back = QPushButton("Back")
+            self.back.setStyleSheet('''background-color: #FFFFFF;
+                                color: red;
+                                font-size: 18px;
+                                font-family: Tahoma, Verdana, Arial Black, Arial;
+                                max-width:300px;
+                                width:120px;
+                                height:80px;
+                                margin-left:0px;
+                                margin-right:490px;
+                                border:3px solid red;''')
+
+            e = QHBoxLayout()
+            e.addWidget(email_label)
+            e.addWidget(email)
+            
+            p = QHBoxLayout()
+            p.addWidget(password_label)
+            p.addWidget(password)
+
+            b = QHBoxLayout()
+            b.addWidget(self.back)
+            b.addWidget(self.nex)
+
+            layout = QVBoxLayout()
+            layout.addLayout(e)
+            layout.addLayout(p)
+            layout.addLayout(b)
+
+            self.back.clicked.connect(lambda: update_settings(set_setting2, email=email.text(), password=password.text()))
+            self.nex.clicked.connect(lambda: update_settings(final, email=email.text(), password=password.text(), verbose=False))
+
+            self.cmw(layout)
+
+        self.nex = QPushButton("Next")
+        self.nex.setStyleSheet('''background-color: #FFFFFF;
+                            color: red;
+                            font-size: 18px;
+                            font-family: Tahoma, Verdana, Arial Black, Arial;
+                            max-width:300px;
+                            width:120px;
+                            height:80px;
+                            min-width:120px;
+                            margin-left:0px;
+                            margin-right:0px;
+                            border:3px solid red;''')
+
+        self.back = QPushButton("Back")
+        self.back.setStyleSheet('''background-color: #FFFFFF;
+                            color: red;
+                            font-size: 18px;
+                            font-family: Tahoma, Verdana, Arial Black, Arial;
+                            max-width:300px;
+                            width:120px;
+                            height:80px;
+                            margin-left:0px;
+                            margin-right:490px;
+                            border:3px solid red;''')
+
+        settings = {}
+        text = '''Welcome to the FSC Scheduler.\nYou will be guided through a first-time setup of your schedule.''' if not is_again else "Please set your settings."
+        info = QLabel(text)
+        info.setAlignment(Qt.AlignCenter)
+        info.setStyleSheet('''color:white;
+                                height:300px;
+                                max-height:300px;
+                                margin-bottom:30px;
+                                font-size:18px;
+                                font-family: Bookman, Verdana, Comic Sans MS, Arial;''')
+        
+        layout = QVBoxLayout()
+        layout.addWidget(info)
+        layout.addWidget(self.nex, alignment=Qt.AlignBottom | Qt.AlignRight)
+
+        self.nex.clicked.connect(set_setting2)
+
+        self.cmw(layout)
+        #     print("Let's introduce eachother. Hi, I'm SCHEDULY, the CMD line scheduler. And you are?")
+        #     settings.update({"user":input("Enter your username:    ")})
+        #     print("Hi, {0}!".format(settings.get("user")))
+        #     input("\nPress enter to continue...")
+        #     os.system("cls")
+
+        #     print("In order to properly sign in to your google meetings, you need to login to your school GMAIL account:")
+        #     while True:
+        #         em = input("\nPlease enter your email address:    ")
+        #         pa = input("Please enter your password:    ")
+        #         r = input(f"\nIs this correct?\nEmail:  {em}\nPassword:  {pa}\n\ny/N:    ")
+        #         if r[0].lower() == "y":
+        #             break
+        #         print("Operation canceled...")
+        #         time.sleep(0.5)
+
+        #     settings.update({"email":em, "password":pa, "verbose":"False"})
+        #     write_settings(settings)
+        #     os.system("cls")
+        #     set_sched()
+        
+    def run_setting(self):
+        buttons = modify_set, modify_sched, theme, reset_set, reset_sched = QPushButton("Modify Settings"), \
+                                                                            QPushButton("Modify Schedule"), QPushButton("Themes"), \
+                                                                            QPushButton("Reset Settings"), QPushButton('Reset Schedule')
+
+        self.back = QPushButton("Back")
+        self.back.setStyleSheet('''background-color: #FFFFFF;
+                            color: red;
+                            font-size: 18px;
+                            font-family: Tahoma, Verdana, Arial Black, Arial;
+                            max-width:300px;
+                            width:120px;
+                            height:80px;
+                            margin-left:0px;
+                            margin-right:490px;
+                            border:3px solid red;''')
+
+        modify_sched.clicked.connect(self.set_sched)
+        modify_set.clicked.connect(lambda: self.set_setting(1))
+        self.back.clicked.connect(self.main_menu)
+
+        layout = QVBoxLayout()
+        for b in buttons:
+            layout.addWidget(b)
+        layout.addWidget(self.back, alignment=Qt.AlignBottom | Qt.AlignLeft)
+
+        reset_sched.clicked.connect(lambda: self.confirm_delete(layout, 1))
+        reset_set.clicked.connect(lambda: self.confirm_delete(layout))
+
+        self.cmw(layout)
+        # os.system("cls")
+        # print("Settings\n1:Modify Settings\n2:Modify Schedule\n3:Reset Settings\n4:Reset Schedule\n5:Back")
+        # c = input("Enter a number:    ")
+        # if c == "1":
+        #     os.system("notepad \"settings.txt\"")
+        # elif c == "2":
+        #     os.system("notepad \"schedule.sched\"")
+        # elif c == "3":
+        #     open("settings.txt", "w").close()
+        #     os.system("cls")
+        #     print("All cleared!")
+        #     time.sleep(0.5)
+        # elif c == "4":
+        #     open("schedule.sched", "w").close()
+        #     os.system("cls")
+        #     print("All cleared!")
+        #     time.sleep(0.5)
+        # elif c == "5":
+        #     return
+        # else:
+        #     print("Invalid input!")
+        #     time.sleep(0.5)
+
+        # run_setting()
         
     def run_menu(self):
         global read_IO
@@ -180,9 +537,7 @@ class Widget(QMainWindow):
 
         self.stop.clicked.connect(self.run_OFF)
 
-        self.wdg = QWidget(self)
-        self.wdg.setLayout(layout)
-        self.setCentralWidget(self.wdg)
+        self.cmw(layout)
 
     def update_run(self):
         def isalive(driver):
@@ -299,9 +654,7 @@ class Widget(QMainWindow):
         layout.addWidget(make_form)
         layout.addWidget(cont, alignment=Qt.AlignRight | Qt.AlignBottom)
 
-        self.wdg = QWidget(self)
-        self.wdg.setLayout(layout)
-        self.setCentralWidget(self.wdg)
+        self.cmw(layout)
 
     def set_sched_2(self):
         def final():
@@ -320,9 +673,7 @@ class Widget(QMainWindow):
 
             write_schedule(self.new_data)
             
-            self.wdg = QWidget(self)
-            self.wdg.setLayout(layout)
-            self.setCentralWidget(self.wdg)
+            self.cmw(layout)
 
             QTimer.singleShot(2500, self.main_menu)
 
@@ -366,9 +717,7 @@ class Widget(QMainWindow):
         layout.addWidget(confirm)
         layout.addWidget(back, alignment=Qt.AlignLeft | Qt.AlignBottom)
 
-        self.wdg = QWidget(self)
-        self.wdg.setLayout(layout)
-        self.setCentralWidget(self.wdg)
+        self.cmw(layout)
 
 def load(file):
     r = {}
@@ -378,6 +727,7 @@ def load(file):
             r.update({x[:x.find(":")]:x[x.find(":") + 1:x.rfind(",")] for x in t})
     else:
         print(f"{file} not found! It may have been deleted if this is not the first setup.")
+    # print(r)
     return r
 
 def is_list(d):
@@ -396,101 +746,6 @@ def write_schedule(d):
         f.write(f"{tiw}\n{clw}\n{liw}\n{dyw}\n\n")
 
     f.close()
-
-def write_settings(args):
-    f = open("settings.txt", "w")
-    for k in args:
-        f.write("%s:%s,\n" % (str(k), args.get(k)))
-
-    f.close()
-
-def set_sched():
-    print("Let's get your schedule together.")
-    print("You can either enter your classes one-by-one, e.g.:")
-    print("    Study Hall\n    9:26AM\n    https://g.co/meet/your-link-here")
-    print("\nOr you can enter them all at once as a comma-separated list, e.g.:")
-    print("    Study Hall 9:26AM https://zoom.us/meeting/your-link-here, History 10:54 [link], Econ 1:07 [link], etc.")
-    print("\nWhen you want to quit, just type '!quit' or '!q'")
-    print("Don't worry about capitalization: I'll adjust it so everything will work smoothly for you! :)")
-    
-    c = 0
-    while True:
-        sched = input("\nPlease enter your " + ("next " if c == 1 else "") + "schedule or type !q to finish your schedule:\n")
-        l = is_list(sched)
-        if sched[:2].lower() == "!q":
-            break
-
-        if not l:
-            cl = sched
-            ti = input("\nPlease give the time at which this class starts (e.g. 10:00AM):\n")
-            li = input("\nPlease give the link for the meeting of this class:\n")
-            sched = cl + ti + li
-
-        write_schedule(sched, l)
-        c = 1
-        if l:
-            break
-    
-    os.system("cls")
-    print("Thank you for setting up your user. You can now proceed with the program.")
-    input("\nPress Enter to continue...")
-    os.system("cls")
-
-def setup():
-    settings = {}
-    print("Welcome to the schoology commandline organizer.")
-    print("You will be guided for a first-time setup of your schoology schedule.")
-    print("\nPress enter to continue...")
-    input()
-
-    os.system('cls')
-
-    print("Let's introduce eachother. Hi, I'm SCHEDULY, the CMD line scheduler. And you are?")
-    settings.update({"user":input("Enter your username:    ")})
-    print("Hi, {0}!".format(settings.get("user")))
-    input("\nPress enter to continue...")
-    os.system("cls")
-
-    print("In order to properly sign in to your google meetings, you need to login to your school GMAIL account:")
-    while True:
-        em = input("\nPlease enter your email address:    ")
-        pa = input("Please enter your password:    ")
-        r = input(f"\nIs this correct?\nEmail:  {em}\nPassword:  {pa}\n\ny/N:    ")
-        if r[0].lower() == "y":
-            break
-        print("Operation canceled...")
-        time.sleep(0.5)
-
-    settings.update({"email":em, "password":pa, "verbose":"False"})
-    write_settings(settings)
-    os.system("cls")
-    set_sched()
-
-def run_setting():
-    os.system("cls")
-    print("Settings\n1:Modify Settings\n2:Modify Schedule\n3:Reset Settings\n4:Reset Schedule\n5:Back")
-    c = input("Enter a number:    ")
-    if c == "1":
-        os.system("notepad \"settings.txt\"")
-    elif c == "2":
-        os.system("notepad \"schedule.sched\"")
-    elif c == "3":
-        open("settings.txt", "w").close()
-        os.system("cls")
-        print("All cleared!")
-        time.sleep(0.5)
-    elif c == "4":
-        open("schedule.sched", "w").close()
-        os.system("cls")
-        print("All cleared!")
-        time.sleep(0.5)
-    elif c == "5":
-        return
-    else:
-        print("Invalid input!")
-        time.sleep(0.5)
-
-    run_setting()
 
 def load_sched():
     os.chdir(os.path.abspath(os.path.dirname(__file__)))
@@ -542,6 +797,9 @@ def init_sel(verbose="False"):
                     pass
             e.send_keys(Keys.RETURN)
         time.sleep(1)
+
+    settings = load("settings.txt")
+    email, password = settings.get("email"), settings.get("password")
 
     chrome_options = Options()
     chrome_options.add_argument("--incognito")
@@ -624,9 +882,9 @@ def run():
         minutes = int(time.strftime("%M"))
         seconds = t % 60
         am = time.strftime("%p").lower()
-        # print(hours, minutes)
+        # print("CUR TIME: ", hours, minutes)
 
-        if not debounce and minutes - old_time > 5:
+        if not debounce and (hours + (12 if am == "pm" else 0)) * 60 + minutes - old_time > 6:
             debounce = True
 
         for i in class_nums:
@@ -634,12 +892,12 @@ def run():
             tim = s[i][1].lower()
             clss = s[i][0]
             dys = s[i][3]
-            # print(tim)
+            # print("RECORDED TIME: ", tim)
             h = int(tim[:tim.rfind(":")])
             m = int(tim[tim.rfind(":") + 1:tim.rfind("m") - 1])
             cm = tim[tim.rfind("m") - 1:]
 
-            if debounce and day in dys and hours == h and minutes - m >= 0 and minutes - m <= 3 and am == cm:
+            if debounce and day in dys and hours == h and minutes - m >= 0 and minutes - m <= 5 and am == cm:
                 print(f"joining {clss}")
                 for n in range(11):
                     try:
@@ -648,7 +906,7 @@ def run():
                         break
                     except:
                         print(f"Failed to join {clss}! Retrying..." + (f" {n}" if n > 0 else "" + "\n"))
-                old_time = minutes
+                old_time = m + 60 * (h + (12 if cm == "pm" and h != 12 else 0))
         
         last = max([x for x in class_nums if day in s[x][3]], key=lambda x: int(s[x][1][:s[x][1].find(":")]) + int(s[x][1][s[x][1].find(":") + 1:-2]) / 60 + (12 if s[x][1][-2:].lower() == "pm" and s[x][1][:s[x][1].find(":")] != "12" else 0))
         tim = s[last][1].lower()
@@ -661,7 +919,6 @@ def run():
         if lhours > lh + (12 if lam == "pm" and lh != 12 else 0) and minutes > lm:
             break
             # pass
-
             # print(h, m, hours, minutes)
         # break
     sys.stdout = old_IO
@@ -671,7 +928,7 @@ def start():
     global form
     app = QApplication()
 
-    form = Widget(hellotext=f"Hello {user}!")
+    form = Widget()
     form.show()
 
     with open("design.qss", "r") as f:
@@ -683,37 +940,18 @@ def start():
     os.chdir(olddir)
     
     app.exec_()
-    # while True:
-    #     os.system("cls")
-    #     print(f"Hello {user}!")
-    #     # print("Main Menu")
-    #     menu = {1:"Run", 2:"Settings", 3:"Quit"}
-    #     func = {1:run, 2:run_setting, 3:sys.exit}
-
-    #     print("\n".join([str(i) + ":" + str(menu.get(i)) for i in menu]))
-    #     c = input("Enter a number:    ")
-
-    #     func.get(int(c), (lambda: None))()
-
-        # init_sel()
-        # join_meet("https://g.co/meet/MyersAPecon1")
 
 def main():
-    global email, password, user, read_IO, old_IO, glob_text
+    global read_IO, old_IO, glob_text
     os.chdir(os.path.abspath(os.path.dirname(__file__)))
     os.system("cls")
     
-    settings = load("settings.txt")
-
-    # print(settings)
-    user = settings.get("user", "user")
-    email, password = settings.get("email"), settings.get("password")
     old_IO = sys.stdout
     read_IO = StringIO()
     glob_text = ""
 
-    if settings == {}:
-        setup()
+    # if settings == {}:
+        # setup()
     # elif open("schedule.sched").read() == "":
     #     set_sched()
         
