@@ -25,6 +25,9 @@ Run whatever command you usually do to install selenium (e.g. `pip install selen
 ### If run.bat doesn't work:
 You will need to manually run the python file (schoology.py) to utilize the program, as python is not set on your PATH variable.
 
+## CLI Version
+If you are more inclined to use a commandline interface (CLI), then please view the "master" branch.
+
 # Upcoming features:
 - Themes / Custom colors
 - Support for more meeting types
