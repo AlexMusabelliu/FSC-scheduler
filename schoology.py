@@ -1,11 +1,198 @@
-import os, json, re, sys, time
+import os, json, re, sys, time, threading, random
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.remote.command import Command
 from itertools import chain
+from PySide2.QtWidgets import *
+from PySide2.QtCore import *
+from PySide2.QtGui import *
+from io import StringIO
+
+class Widget(QMainWindow):
+    def __init__(self, hellotext="Hello", parent=None):
+        super(Widget, self).__init__(parent)
+        self.hellotext = hellotext
+        self.debug_output = ""
+        self.stopText = "Stop Running"
+        self.ran = False
+
+        height, width = 720, 1280
+
+        self.setMinimumHeight(height) 
+        self.setMaximumHeight(height)
+        self.setMinimumWidth(width) 
+        self.setMaximumWidth(width)
+
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.update)
+        self.timer.start(30)
+
+        self.main_menu()
+
+    def main_menu(self):
+        self.main = QPushButton("Run")
+        self.opt = QPushButton("Options")
+        self.quit = QPushButton("Quit")
+        self.hello = QLabel(self.hellotext)
+        self.hello.setAlignment(Qt.AlignCenter)
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.hello)
+        layout.addWidget(self.main)
+        layout.addWidget(self.opt)
+        layout.addWidget(self.quit)
+
+        self.main.clicked.connect(_run)
+        self.opt.clicked.connect(run_setting)
+        self.quit.clicked.connect(lambda: sys.exit())
+
+        self.wdg = QWidget(self)
+        self.wdg.setLayout(layout)
+        self.setCentralWidget(self.wdg)
+
+    def run_OFF(self):
+        global cont_RUN, driver
+        def _quit():
+            while True:
+                try:
+                    driver.quit()
+                    break
+                except Exception as e:
+                    # print(e)
+                    if str(Exception) == "":
+                        break
+                
+        cont_RUN = False
+        self.stop.clicked.connect(lambda: None)
+        if self.stopText != "All done! Click here to return...":
+            self.stopText = "Quitting..."
+        else:
+            self.stopText = "Returning..."
+            
+        self.stop.setText(self.stopText)
+        threading.Thread(target=lambda: _quit(), daemon=True).start()
+        
+
+    def run_menu(self):
+        global read_IO
+        self.ran = True
+        self.stopText = "Stop Running"
+        sys.stdout = read_IO = StringIO()
+        self.debug = QLabel(self.debug_output)
+        self.debug.setWordWrap(True)
+        self.debug.setStyleSheet('''color:white;
+                                    height:300px;
+                                    max-height:300px;
+                                    margin-bottom:30px;
+                                    font-size:14px;
+                                    font-family: Trebuchet-MS, Comic Sans MS, Arial;''')
+        
+        self.stop = QPushButton(self.stopText)
+        # self.stop.setWordWrap(True)
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.debug)
+        layout.addWidget(self.stop)
+
+        self.stop.clicked.connect(self.run_OFF)
+
+        self.wdg = QWidget(self)
+        self.wdg.setLayout(layout)
+        self.setCentralWidget(self.wdg)
+
+    def update_run(self):
+        def isalive(driver):
+            try:
+                driver.execute(Command.STATUS)
+                return True
+            except:
+                return False
+
+        global driver, glob_text
+        try:
+            if self.ran:
+                alive = isalive(driver)
+                # print(alive, random.random())
+                if not alive:
+                    self.ran = False
+                    self.main_menu()
+        except:
+            # print(f"Glob_text: {glob_text}")
+            pass
+        
+        if glob_text == "Set your schedule":
+            self.stopText = "Set your schedule"
+            self.stop.clicked.connect(self.set_sched)
+
+        self.stop.setText(self.stopText)
+    
+    def update(self):
+        to_show = read_IO.getvalue()
+        self.debug_output = to_show
+        try:
+            self.update_run()
+        except Exception as e:
+            # print("couldn't run", e)
+            pass
+        try:
+            self.debug.setText(self.debug_output)
+        except Exception as e:
+            # sys.stdout = old_IO
+            # print(e)
+            # sys.stdout = read_IO
+            pass
+
+    def set_sched(self):
+        cont = QPushButton(">")
+        hello = QLabel(hellotext)
+        hello.setAlignment(Qt.AlignCenter)
+
+        layout = QVBoxLayout()
+        layout.addWidget(hello)
+        layout.addWidget(cont, alignment=Qt.AlignRight)
+
+        self.main.clicked.connect(_run)
+        self.opt.clicked.connect(run_setting)
+        self.quit.clicked.connect(lambda: sys.exit())
+
+        self.wdg = QWidget(self)
+        self.wdg.setLayout(layout)
+        self.setCentralWidget(self.wdg)
+        
+        print("Let's get your schedule together.")
+        print("You can either enter your classes one-by-one, e.g.:")
+        print("    Study Hall\n    9:26AM\n    https://g.co/meet/your-link-here")
+        print("\nOr you can enter them all at once as a comma-separated list, e.g.:")
+        print("    Study Hall 9:26AM https://zoom.us/meeting/your-link-here, History 10:54 [link], Econ 1:07 [link], etc.")
+        print("\nWhen you want to quit, just type '!quit' or '!q'")
+        print("Don't worry about capitalization: I'll adjust it so everything will work smoothly for you! :)")
+        
+        c = 0
+        while True:
+            sched = input("\nPlease enter your " + ("next " if c == 1 else "") + "schedule or type !q to finish your schedule:\n")
+            l = is_list(sched)
+            if sched[:2].lower() == "!q":
+                break
+
+            if not l:
+                cl = sched
+                ti = input("\nPlease give the time at which this class starts (e.g. 10:00AM):\n")
+                li = input("\nPlease give the link for the meeting of this class:\n")
+                sched = cl + ti + li
+
+            write_schedule(sched, l)
+            c = 1
+            if l:
+                break
+        
+        os.system("cls")
+        print("Thank you for setting up your user. You can now proceed with the program.")
+        input("\nPress Enter to continue...")
+        os.system("cls")
 
 def load(file):
     r = {}
@@ -136,7 +323,11 @@ def run_setting():
 
 def load_sched():
     os.chdir(os.path.abspath(os.path.dirname(__file__)))
-    f = open("schedule.sched")
+    try:
+        f = open("schedule.sched")
+    except Exception as e:
+        # print(f"Failed to load schedule! Error: {e}")
+        return {}
     t = f.read().rstrip()
     b = t.split("\n\n")
     sched = {}
@@ -158,7 +349,7 @@ def load_sched():
             
             sched.update({i:(clw, tiw, liw, dys)})
         except:
-            print("Failed to load schedule...")
+            # print("Failed to load schedule...")
             return sched
 
     return sched
@@ -209,24 +400,37 @@ def join_meet(link):
         e = driver.switchTo().activeElement();
         e.send_keys(Keys.ENTER)
 
+def _run():
+    global form
+    form.run_menu()
+    threading.Thread(target=run, daemon=True).start()
+    # print("Done")
+
 def run():
-    os.system("cls")
+    global read_IO, cont_RUN, old_IO, form, glob_text
+    sys.stdout = read_IO
     sett = load("settings.txt")
     
     if sett.get("verbose") != "True":
-        os.system("cls")
+        verb = False
+    else:
+        verb = True
 
     if sett == {}:
         print("WARNING: no settings have been created; they will be created on next startup.")
 
-    init_sel(sett.get("verbose", "False"))
-
     s = load_sched()
     if s == {}:
-        os.system("cls")
         print("Your schedule is blank!\n")
-        print("Press Enter to create a schedule...")
-        set_sched()
+        print("Click below to set your schedule....")
+    sys.stdout = old_IO
+
+    while s == {}:
+        glob_text = "Set your schedule"
+        s = load_sched()
+    sys.stdout = read_IO
+
+    init_sel(sett.get("verbose", "False"))
 
     day = int(time.strftime("%w"))
 
@@ -236,19 +440,20 @@ def run():
     old_time = None
     # class_nums = list(chain(range(0, 1), range(1 + offset, min(offset + 5, len(s)))))
     class_nums = range(len(s))
-    if sett.get("verbose") == "True":
+    if verb:
         print(s)
         print([i for i in class_nums])
 
-    s = load_sched()
-    while True:
+    dayst = time.daylight
+    cont_RUN = True
+    while cont_RUN:
         t = time.time()
 
         hours = int(time.strftime("%I"))
         minutes = int(time.strftime("%M"))
         seconds = t % 60
         am = time.strftime("%p").lower()
-        # print(am)
+        # print(hours, minutes)
 
         if not debounce and minutes - old_time > 5:
             debounce = True
@@ -274,8 +479,8 @@ def run():
                         print(f"Failed to join {clss}! Retrying..." + (f" {n}" if n > 0 else "" + "\n"))
                 old_time = minutes
         
-
-        tim = s[class_nums[len(class_nums) - 1]][1].lower()
+        last = max([x for x in class_nums if day in s[x][3]], key=lambda x: int(s[x][1][:s[x][1].find(":")]) + int(s[x][1][s[x][1].find(":") + 1:-2]) / 60 + (12 if s[x][1][-2:].lower() == "pm" and s[x][1][:s[x][1].find(":")] != "12" else 0))
+        tim = s[last][1].lower()
         lh, lm = int(tim[:tim.rfind(":")]), int(tim[tim.rfind(":") + 1:tim.find("m") - 1])
         lam = tim[tim.rfind("m") - 1:].lower()
         lhours = int(time.strftime("%H"))
@@ -288,27 +493,37 @@ def run():
 
             # print(h, m, hours, minutes)
         # break
-    print("The day is over! Enjoy the rest of it!")
-    input("Press Enter to continue...")
+    sys.stdout = old_IO
+    form.stopText = "All done! Click here to return..."
 
 def start():
-    while True:
-        os.system("cls")
-        print(f"Hello {user}!")
-        # print("Main Menu")
-        menu = {1:"Run", 2:"Settings", 3:"Quit"}
-        func = {1:run, 2:run_setting, 3:sys.exit}
+    global form
+    app = QApplication()
 
-        print("\n".join([str(i) + ":" + str(menu.get(i)) for i in menu]))
-        c = input("Enter a number:    ")
+    form = Widget(hellotext=f"Hello {user}!")
+    form.show()
 
-        func.get(int(c), (lambda: None))()
+    with open("design.qss", "r") as f:
+        app.setStyleSheet(f.read())
+    
+    app.exec_()
+    # while True:
+    #     os.system("cls")
+    #     print(f"Hello {user}!")
+    #     # print("Main Menu")
+    #     menu = {1:"Run", 2:"Settings", 3:"Quit"}
+    #     func = {1:run, 2:run_setting, 3:sys.exit}
+
+    #     print("\n".join([str(i) + ":" + str(menu.get(i)) for i in menu]))
+    #     c = input("Enter a number:    ")
+
+    #     func.get(int(c), (lambda: None))()
 
         # init_sel()
         # join_meet("https://g.co/meet/MyersAPecon1")
 
 def main():
-    global email, password, user
+    global email, password, user, read_IO, old_IO, glob_text
     os.chdir(os.path.abspath(os.path.dirname(__file__)))
     os.system("cls")
     
@@ -317,11 +532,14 @@ def main():
     # print(settings)
     user = settings.get("user", "user")
     email, password = settings.get("email"), settings.get("password")
+    old_IO = sys.stdout
+    read_IO = StringIO()
+    glob_text = ""
 
     if settings == {}:
         setup()
-    elif open("schedule.sched").read() == "":
-        set_sched()
+    # elif open("schedule.sched").read() == "":
+    #     set_sched()
         
     start()
 
