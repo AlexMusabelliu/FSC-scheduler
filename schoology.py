@@ -83,7 +83,7 @@ class Widget(QMainWindow):
         olddir = os.getcwd()
         os.chdir(os.path.abspath(os.path.dirname(__file__)))
         # print(os.getcwd())
-        os.chdir("..")
+        # os.chdir("..")
 
         self.debug_output = ""
         self.stopText = "Stop Running"
@@ -91,9 +91,12 @@ class Widget(QMainWindow):
         self.form_active = False
         self.new_data = []
         self.seen_sched = False
-        self.name = ""
-        self.email = ""
-        self.password = ""
+        settings = load("settings.txt")
+        self.name = settings.get("name", "")
+        self.email = settings.get("email", "")
+        self.password = settings.get("password", "")
+        self.autoMute = settings.get("autoMute", "")
+        print(settings)
         
         height, width = 720, 1280
 
@@ -122,16 +125,23 @@ class Widget(QMainWindow):
             self.set_setting()
         
         sched = load_sched()
-        print(settings, sched)
+        # print(settings, sched)
         if sched == {}:
             self.set_sched()
 
         self.main_menu()
 
+    def reload(self, sett):
+        self.name = sett.get("name", "")
+        self.email = sett.get("email", "")
+        self.password = sett.get("password", "")
+        self.autoMute = sett.get("autoMute", "")
+
     def main_menu(self):
         self.settings = load("settings.txt")
         user = self.settings.get("name", "user")
         hellotext = f"Hello {user}"
+        self.reload(self.settings)
 
         self.main = QPushButton("Run")
         self.opt = QPushButton("Options")
@@ -263,11 +273,13 @@ class Widget(QMainWindow):
     def set_setting(self, is_again=0):
         def update_settings(func, **kwargs):
             if kwargs.get("name"):
-                self.name = kwargs.get("name")
+                self.name = kwargs.get("name", "")
             if kwargs.get("email"):
-                self.email = kwargs.get("email")
+                self.email = kwargs.get("email", "")
             if kwargs.get("password"):
-                self.password = kwargs.get("password")
+                self.password = kwargs.get("password", "")
+            if kwargs.get("autoMute"):
+                self.autoMute = kwargs.get("autoMute", "")
                 
             settings.update({k:kwargs.get(k) for k in kwargs if k != "arg"})
             arg = kwargs.get("arg")
@@ -325,19 +337,6 @@ class Widget(QMainWindow):
             self.cmw(layout)
 
         def set_setting3():
-            def final(): 
-                self.write_settings(settings)
-                text = "Your settings have been updated."
-                info = QLabel(text)
-
-                layout = QHBoxLayout()
-                layout.addWidget(info, alignment=Qt.AlignCenter)
-
-                self.cmw(layout)
-            
-                QTimer.singleShot(1900, self.run_setting if is_again else self.set_sched)
-                    
-
             text = '''In order to sign in to Google meetings, an email address and password are needed.\nThese are kept confidential on your system.'''
             info = QLabel(text)
 
@@ -391,9 +390,73 @@ class Widget(QMainWindow):
             layout.addLayout(b)
 
             self.back.clicked.connect(lambda: update_settings(set_setting2, email=email.text(), password=password.text()))
-            self.nex.clicked.connect(lambda: update_settings(final, email=email.text(), password=password.text(), verbose=False))
+            self.nex.clicked.connect(lambda: update_settings(set_setting4, email=email.text(), password=password.text()))
 
             self.cmw(layout)
+
+        def set_setting4():
+            def final(): 
+                self.write_settings(settings)
+                text = "Your settings have been updated."
+                info = QLabel(text)
+
+                layout = QHBoxLayout()
+                layout.addWidget(info, alignment=Qt.AlignCenter)
+
+                self.cmw(layout)
+            
+                QTimer.singleShot(1900, self.run_setting if is_again else self.set_sched)
+
+            self.nex = QPushButton("Finalize")
+            self.nex.setStyleSheet('''background-color: #FFFFFF;
+                                color: red;
+                                font-size: 18px;
+                                font-family: Tahoma, Verdana, Arial Black, Arial;
+                                max-width:300px;
+                                width:120px;
+                                height:80px;
+                                min-width:120px;
+                                margin-left:0px;
+                                margin-right:0px;
+                                border:3px solid red;''')
+
+            self.back = QPushButton("Back")
+            self.back.setStyleSheet('''background-color: #FFFFFF;
+                                color: red;
+                                font-size: 18px;
+                                font-family: Tahoma, Verdana, Arial Black, Arial;
+                                max-width:300px;
+                                width:120px;
+                                height:80px;
+                                margin-left:0px;
+                                margin-right:490px;
+                                border:3px solid red;''')
+
+            text = '''Enable auto-mute'''
+            # muteInfo = QLabel(text)
+            muteButton = QCheckBox(text)
+            # print("autoMute")
+            muteButton.setChecked(self.autoMute == "True")
+            muteButton.setToolTip("Whether or not to automatically mute the microphone when joining.")
+
+            # mute = QHBoxLayout()
+            # QHBoxLayout.addWidget(muteInfo)
+            # QHBoxLayout.addWidget(muteButton)
+
+            b = QHBoxLayout()
+            b.addWidget(self.back)
+            b.addWidget(self.nex)
+
+            layout = QVBoxLayout()
+            layout.addWidget(muteButton)
+            layout.addLayout(b)
+            
+            self.back.clicked.connect(lambda: update_settings(set_setting3, email=email.text(), password=password.text()))
+            self.nex.clicked.connect(lambda: update_settings(final, autoMute=muteButton.isChecked() == True, verbose=False))
+
+            self.cmw(layout)
+
+        # settings = load("settings.txt")
 
         self.nex = QPushButton("Next")
         self.nex.setStyleSheet('''background-color: #FFFFFF;
@@ -831,6 +894,7 @@ def join_meet(link):
 
 def _run():
     global form
+    form.test()
     form.run_menu()
     threading.Thread(target=run, daemon=True).start()
     # print("Done")
