@@ -861,6 +861,8 @@ def init_sel(verbose="False"):
             e.send_keys(Keys.RETURN)
         time.sleep(1)
 
+    os.chdir(os.path.abspath(os.path.dirname(__file__)))
+
     settings = load("settings.txt")
     email, password = settings.get("email"), settings.get("password")
 
@@ -869,7 +871,11 @@ def init_sel(verbose="False"):
     chrome_options.add_argument("use-fake-ui-for-media-stream")
     if verbose == "False":
         chrome_options.add_argument("--log-level=OFF")
-    driver = webdriver.Chrome(chrome_options=chrome_options)
+
+    chrome_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "chromedriver.exe")
+    # print(chrome_path)
+
+    driver = webdriver.Chrome(executable_path=chrome_path, chrome_options=chrome_options)
 
     driver.get("https://accounts.google.com/signin/v2/identifier?continue=https%3A%2F%2Fmail.google.com%2Fmail%2F&service=mail&sacu=1&rip=1&flowName=GlifWebSignIn&flowEntry=ServiceLogin")
     login(email, password)
